@@ -36,6 +36,7 @@
     const dbName = 'UserBiometricsDB';
     const storeName = 'users';
     const messageDiv = document.getElementById('message');
+    const registrationForm = document.getElementById('registrationForm');
 
     function openDatabase() {
         return new Promise((resolve, reject) => {
@@ -58,18 +59,17 @@
 
     async function registerUser(name, role, company) {
         try {
-            // Gerar um 'challenge' aleatório
             const challenge = window.crypto.getRandomValues(new Uint8Array(32));
 
             const publicKey = await navigator.credentials.create({
                 publicKey: {
                     rp: { name: 'Minha Empresa' },
                     user: {
-                        id: window.crypto.getRandomValues(new Uint8Array(16)), // ID único
+                        id: window.crypto.getRandomValues(new Uint8Array(16)),
                         name: name,
                         displayName: name
                     },
-                    challenge: challenge, // Adicionar a propriedade 'challenge'
+                    challenge: challenge,
                     pubKeyCredParams: [{ type: 'public-key', alg: -7 }]
                 }
             });
@@ -88,6 +88,9 @@
 
             await transaction.complete;
             showMessage('Usuário cadastrado e digital vinculada com sucesso!', 'green');
+            
+            // Limpa os campos do formulário de cadastro
+            registrationForm.reset();
         } catch (error) {
             showMessage(`Erro no cadastro: ${error.message}`, 'red');
             console.error(error);
@@ -108,7 +111,6 @@
                     return;
                 }
                 
-                // Gerar um novo 'challenge' para a autenticação
                 const challenge = window.crypto.getRandomValues(new Uint8Array(32));
 
                 const credentials = users.map(user => ({
@@ -119,7 +121,7 @@
                 const assertion = await navigator.credentials.get({
                     publicKey: {
                         allowCredentials: credentials,
-                        challenge: challenge // Adicionar a propriedade 'challenge'
+                        challenge: challenge
                     }
                 });
 
@@ -161,7 +163,7 @@
         authenticateUser();
     });
 </script>
-
 </body>
 </html>
+
 
