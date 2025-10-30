@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cadastro Biométrico</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        .container { max-width: 600px; margin: auto; }
+        input, button { display: block; width: 100%; margin-bottom: 10px; padding: 10px; }
+        #message { text-align: center; margin-top: 20px; font-weight: bold; }
+        h2 { text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Cadastro de Usuário com Biometria</h2>
+        <form id="registrationForm">
+            <input type="text" id="name" placeholder="Nome Completo" required>
+            <input type="text" id="role" placeholder="Função" required>
+            <input type="text" id="company" placeholder="Empresa" required>
+            <button type="submit">Cadastrar e Vincular Digital</button>
+        </form>
+
+        <hr>
+
+        <h2>Confirmação de Acesso com Biometria</h2>
+        <form id="loginForm">
+            <button type="submit">Confirmar Digital</button>
+        </form>
+
+        <div id="message"></div>
+    </div>
+
+    <script>
+        const dbName = 'UserBiometricsDB';
+        const storeName = 'users';
+        const messageDiv = document.getElementById('message');
+
+        function openDatabase() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(dbName, 1);
+
+                request.onupgradeneeded = (event) => {
+                    const db = event.target.result;
+                    db.createObjectStore(storeName, { keyPath: 'id', autoIncrement: true });
+                };
+
+                request.onsuccess = (event) => {
+                    resolve(event.target.result);
+                };
+
+                request.onerror = (event) => {
+                    reject('Erro ao abrir o banco de dados.');
+                };
+            });
+        }
+
+        async function registerUser(name, role, company) {
+            try {
+                const publicKey = await navigator.credentials.create({
+                    publicKey: {
+                        rp: { name: 'Minha Empresa' },
+                        user: {
+                            id: new Uint8Array(16), // ID único
+                            name: name,
+                            displayName: name
+                        },
+                        pubKeyCredParams: [{ type: 'public-key', alg: -7 }] // Algoritmo de criptografia
+                    }
+                });
+
+                const db = await openDatabase();
+                const transaction = db.transaction(storeName, 'readwrite');
+                const store = transaction.objectStore(storeName);
+
+                const userData = {
+                    name: name,
+                    role: role,
+                    company: company,
+                    credentialId: Array.from(new Uint8Array(publicKey.rawId))
+                };
+                store.add(userData);
+
+                await transaction.complete;
+                showMessage('Usuário cadastrado e digital vinculada com sucesso!', 'green');
+            } catch (error) {
+                showMessage(`Erro no cadastro: ${error.message}`, 'red');
+            }
+        }
+
+        async function authenticateUser() {
+            try {
+                const db = await openDatabase();
+                const transaction = db.transaction(storeName, 'readonly');
+                const store = transaction.objectStore(storeName);
+                const request = store.getAll();
+
+                request.onsuccess = async (event) => {
+                    const users = event.target.result;
+                    if (users.length === 0) {
+                        showMessage('Nenhum usuário cadastrado.', 'red');
+                        return;
+                    }
+
+                    const credentials = users.map(user => ({
+                        id: new Uint8Array(user.credentialId),
+                        type: 'public-key'
+                    }));
+
+                    const assertion = await navigator.credentials.get({
+                        publicKey: {
+                            allowCredentials: credentials
+                        }
+                    });
+
+                    const authenticatedUser = users.find(user =>
+                        JSON.stringify(new Uint8Array(user.credentialId)) === JSON.stringify(new Uint8Array(assertion.rawId))
+                    );
+
+                    if (authenticatedUser) {
+                        showMessage(`Olá, ${authenticatedUser.name}! Acesso confirmado.`, 'green');
+                    } else {
+                        showMessage('Digital não reconhecida. Tente novamente.', 'red');
+                    }
+                };
+
+                request.onerror = () => {
+                    showMessage('Erro ao buscar usuários no banco.', 'red');
+                };
+            } catch (error) {
+                showMessage(`Erro na autenticação: ${error.message}`, 'red');
+            }
+        }
+
+        function showMessage(text, color) {
+            messageDiv.textContent = text;
+            messageDiv.style.color = color;
+        }
+
+        document.getElementById('registrationForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const name = document.getElementById('name').value;
+            const role = document.getElementById('role').value;
+            const company = document.getElementById('company').value;
+            registerUser(name, role, company);
+        });
+
+        document.getElementById('loginForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            authenticateUser();
+        });
+    </script>
+</body>
+</html>
